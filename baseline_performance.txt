@@ -1,0 +1,7 @@
+BASELINE_METRICS
+init_swapchain=185000
+init_commands=91
+init_synch_structures=48
+init_descriptors=804
+init_pipelines=3249
+total_time=2557000

@@ -1,0 +1,20 @@
+
+=== Run at Mon Oct 21 18:04:01 2024
+===
+init_swapchain() took 154 milliseconds.
+init_commands() took 94 microseconds.
+init_synch_structures() took 50 microseconds.
+init_descriptors() took 774 microseconds.
+Triangle fragment shader succesfully loaded
+Triangle vertex shader succesfully loaded
+init_pipelines() took 3449 microseconds.
+Loading GLTF: "..\\..\\assets\\basicmesh.glb"
+Total time taken for init and run: 2526 milliseconds.
+
+=== Performance Comparison vs Baseline (in microseconds) ===
+init_swapchain: 154000탎 vs 185000탎 (-16.7568% faster)
+init_commands: 94탎 vs 91탎 (+3.2967% slower)
+init_synch_structures: 50탎 vs 48탎 (+4.16667% slower)
+init_descriptors: 774탎 vs 804탎 (-3.73134% faster)
+init_pipelines: 3449탎 vs 3249탎 (+6.15574% slower)
+Total time: 2526000탎 vs 2557000탎 (-1.21236% faster)
