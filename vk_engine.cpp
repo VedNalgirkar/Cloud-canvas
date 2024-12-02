@@ -1,4 +1,4 @@
-﻿
+
 #include "vk_engine.h"
 
 #include <SDL.h>
@@ -11,10 +11,13 @@
 #include <array>
 #include <iostream>
 #include <fstream>
+#include <windows.h> 
 
 #include "imgui.h"
 #include "imgui_impl_sdl2.h"
 #include "imgui_impl_vulkan.h"
+#include <string>
+#include <shobjidl.h>
 
 #define VMA_IMPLEMENTATION
 #include "vk_mem_alloc.h"
@@ -24,6 +27,7 @@
 #include "meshes.h"
 #include "vk_loader.h"
 #include <chrono>
+
 
 #include <glm/gtx/transform.hpp>
 constexpr bool bUseValidationLayers = true;
@@ -631,6 +635,7 @@ void VulkanEngine::run()
 
 void VulkanEngine::init_vulkan()
 {
+
 	vkb::InstanceBuilder builder;
 
 	//make the vulkan instance, with basic debug features
@@ -678,6 +683,7 @@ void VulkanEngine::init_vulkan()
 	_device = vkbDevice.device;
 	_chosenGPU = physicalDevice.physical_device;
 
+
 	// use vkbootstrap to get a Graphics queue
 	_graphicsQueue = vkbDevice.get_queue(vkb::QueueType::graphics).value();
 
@@ -694,6 +700,7 @@ void VulkanEngine::init_vulkan()
 	_mainDeletionQueue.push_function([&]() {
 		vmaDestroyAllocator(_allocator);
 		});
+
 }
 
 
@@ -979,7 +986,6 @@ void VulkanEngine::immediate_submit(std::function<void(VkCommandBuffer cmd)>&& f
 	VK_CHECK(vkWaitForFences(_device, 1, &_immFence, true, 9999999999));
 
 }
-
 void VulkanEngine::init_pipelines()
 {
 
@@ -1001,24 +1007,93 @@ void VulkanEngine::init_pipelines()
 	std::cout << "init_pipelines() took " << duration << " microseconds.\n";
 }
 
+
+std::string VulkanEngine::select_shader_folder() {
+	HRESULT hr = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
+	if (FAILED(hr)) return "";
+
+	std::string selectedPath;
+	IFileOpenDialog* pfd = nullptr;
+	hr = CoCreateInstance(CLSID_FileOpenDialog, NULL, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&pfd));
+
+	if (SUCCEEDED(hr)) {
+		// Configure the dialog to select folders instead of files
+		DWORD dwOptions;
+		pfd->GetOptions(&dwOptions);
+		pfd->SetOptions(dwOptions | FOS_PICKFOLDERS);
+
+		// Set the dialog title
+		pfd->SetTitle(L"Select Shader Folder");
+
+		// Show the dialog
+		hr = pfd->Show(NULL);
+		if (SUCCEEDED(hr)) {
+			IShellItem* psi;
+			hr = pfd->GetResult(&psi);
+			if (SUCCEEDED(hr)) {
+				PWSTR pszFolderPath;
+				hr = psi->GetDisplayName(SIGDN_FILESYSPATH, &pszFolderPath);
+				if (SUCCEEDED(hr)) {
+					selectedPath = std::string(pszFolderPath, pszFolderPath + wcslen(pszFolderPath));
+					CoTaskMemFree(pszFolderPath);
+				}
+				psi->Release();
+			}
+		}
+		pfd->Release();
+	}
+	CoUninitialize();
+	return selectedPath;
+}
+
+std::string VulkanEngine::get_executable_path() {
+	char buffer[MAX_PATH];
+	GetModuleFileNameA(NULL, buffer, MAX_PATH);
+
+	std::string path(buffer);
+	std::string::size_type pos = path.find_last_of("\\/");
+	return path.substr(0, pos);
+}
+
+
 void VulkanEngine::init_triangle_pipeline()
 {
+	auto start = std::chrono::high_resolution_clock::now();
+
+	// Try the default shader path first
+	std::string shaderPath = get_executable_path() + "/../../shaders/";
+	std::string fragShaderPath = shaderPath + "colored_triangle.frag.spv";
+
+	// Check if the shader file exists
+	if (GetFileAttributesA(fragShaderPath.c_str()) == INVALID_FILE_ATTRIBUTES) {
+		std::cout << "Shader folder not found at default location. Please select shader folder manually." << std::endl;
+		shaderPath = select_shader_folder() + "/";
+
+		// Verify the selected folder contains the needed shaders
+		fragShaderPath = shaderPath + "colored_triangle.frag.spv";
+		if (GetFileAttributesA(fragShaderPath.c_str()) == INVALID_FILE_ATTRIBUTES) {
+			std::cout << "Error: Required shader files not found in selected folder!" << std::endl;
+			return;
+		}
+	}
+
 	VkShaderModule triangleFragShader;
-	if (!vkutil::load_shader_module("../../shaders/colored_triangle.frag.spv", _device, &triangleFragShader)) {
+	if (!vkutil::load_shader_module((shaderPath + "colored_triangle.frag.spv").c_str(),
+		_device, &triangleFragShader)) {
 		std::cout << "Error when building the triangle fragment shader module" << std::endl;
 	}
 	else {
-		std::cout << "Triangle fragment shader succesfully loaded" << std::endl;
+		std::cout << "Triangle fragment shader successfully loaded" << std::endl;
 	}
 
 	VkShaderModule triangleVertexShader;
-	if (!vkutil::load_shader_module("../../shaders/colored_triangle.vert.spv", _device, &triangleVertexShader)) {
+	if (!vkutil::load_shader_module((shaderPath + "colored_triangle.vert.spv").c_str(),
+		_device, &triangleVertexShader)) {
 		std::cout << "Error when building the triangle vertex shader module" << std::endl;
 	}
 	else {
-		std::cout << "Triangle vertex shader succesfully loaded" << std::endl;
+		std::cout << "Triangle vertex shader successfully loaded" << std::endl;
 	}
-
 	
 	//build the pipeline layout that controls the inputs/outputs of the shader
 	//we are not using descriptor sets or other systems yet, so no need to use anything other than empty default
@@ -1059,25 +1134,53 @@ void VulkanEngine::init_triangle_pipeline()
 		vkDestroyPipelineLayout(_device, _trianglePipelineLayout, nullptr);
 		vkDestroyPipeline(_device, _trianglePipeline, nullptr);
 	});
+
+	auto end = std::chrono::high_resolution_clock::now();
+	auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+	std::cout << "init_triangle_pipeline() took " << duration << " microseconds.\n";
 }
 
 void VulkanEngine::init_mesh_pipeline()
 {
+	auto start = std::chrono::high_resolution_clock::now();
+
 //> mesh_shader
+	// Try the default shader path first
+	std::string shaderPath = get_executable_path() + "/../../shaders/";
+	std::string fragShaderPath = shaderPath + "tex_image.frag.spv";
+	std::string vertShaderPath = shaderPath + "colored_triangle_mesh.vert.spv";
+
+	// Check if shader files exist
+	if (GetFileAttributesA(fragShaderPath.c_str()) == INVALID_FILE_ATTRIBUTES ||
+		GetFileAttributesA(vertShaderPath.c_str()) == INVALID_FILE_ATTRIBUTES) {
+		fmt::print("Shader folder not found at default location. Please select shader folder manually.\n");
+		shaderPath = select_shader_folder() + "/";
+
+		// Verify the selected folder contains the needed shaders
+		fragShaderPath = shaderPath + "tex_image.frag.spv";
+		vertShaderPath = shaderPath + "colored_triangle_mesh.vert.spv";
+		if (GetFileAttributesA(fragShaderPath.c_str()) == INVALID_FILE_ATTRIBUTES ||
+			GetFileAttributesA(vertShaderPath.c_str()) == INVALID_FILE_ATTRIBUTES) {
+			fmt::print("Error: Required shader files not found in selected folder!\n");
+			return;
+		}
+	}
+
+	//> mesh_shader
 	VkShaderModule triangleFragShader;
-	if (!vkutil::load_shader_module("../../shaders/tex_image.frag.spv", _device, &triangleFragShader)) {
+	if (!vkutil::load_shader_module(fragShaderPath.c_str(), _device, &triangleFragShader)) {
 		fmt::print("Error when building the fragment shader \n");
 	}
 	else {
-		fmt::print("Triangle fragment shader succesfully loaded \n");
+		fmt::print("Triangle fragment shader successfully loaded \n");
 	}
 
 	VkShaderModule triangleVertexShader;
-	if (!vkutil::load_shader_module("../../shaders/colored_triangle_mesh.vert.spv", _device, &triangleVertexShader)) {
+	if (!vkutil::load_shader_module(vertShaderPath.c_str(), _device, &triangleVertexShader)) {
 		fmt::print("Error when building the vertex shader \n");
 	}
 	else {
-		fmt::print("Triangle vertex shader succesfully loaded \n");
+		fmt::print("Triangle vertex shader successfully loaded \n");
 	}
 
 	VkPushConstantRange bufferRange{};
@@ -1130,7 +1233,12 @@ void VulkanEngine::init_mesh_pipeline()
 		vkDestroyPipelineLayout(_device, _meshPipelineLayout, nullptr);
 		vkDestroyPipeline(_device, _meshPipeline, nullptr);
 	});
+
+	auto end = std::chrono::high_resolution_clock::now();
+	auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+	std::cout << "init_mesh_pipeline() took " << duration << " microseconds.\n";
 }
+
 
 void VulkanEngine::init_descriptors()
 {
