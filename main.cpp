@@ -8,6 +8,8 @@
 #include <string>
 #include <sstream>
 #include <filesystem>
+#include <vector>
+#include <iomanip>
 
 //send to both the console and the text file
 class TeeBuffer : public std::streambuf {
@@ -34,6 +36,8 @@ struct PerformanceMetrics {
     long long init_synch_structures;
     long long init_descriptors;
     long long init_pipelines;
+    long long init_triangle_pipeline;  
+    long long init_mesh_pipeline;
     long long total_time;
 };
 
@@ -68,6 +72,12 @@ protected:
             }
             else if (line.find("init_pipelines()") != std::string::npos) {
                 metrics.init_pipelines = extractTime(line);
+            }
+            else if (line.find("init_triangle_pipeline()") != std::string::npos) {
+                metrics.init_triangle_pipeline = extractTime(line);
+            }
+            else if (line.find("init_mesh_pipeline()") != std::string::npos) {
+                metrics.init_mesh_pipeline = extractTime(line);
             }
             else if (line.find("Total time taken") != std::string::npos) {
                 metrics.total_time = extractTotalTime(line);
@@ -168,6 +178,8 @@ void saveBaselineMetrics(const PerformanceMetrics& metrics, const std::string& f
     file << "init_synch_structures=" << metrics.init_synch_structures << "\n";
     file << "init_descriptors=" << metrics.init_descriptors << "\n";
     file << "init_pipelines=" << metrics.init_pipelines << "\n";
+    file << "init_triangle_pipeline=" << metrics.init_triangle_pipeline << "\n";
+    file << "init_mesh_pipeline=" << metrics.init_mesh_pipeline << "\n";
     file << "total_time=" << metrics.total_time << "\n";
 }
 
@@ -197,6 +209,8 @@ PerformanceMetrics readBaselineMetrics(const std::string& filepath) {
         else if (key == "init_synch_structures") metrics.init_synch_structures = value;
         else if (key == "init_descriptors") metrics.init_descriptors = value;
         else if (key == "init_pipelines") metrics.init_pipelines = value;
+        else if (key == "init_triangle_pipeline") metrics.init_triangle_pipeline = value;
+        else if (key == "init_mesh_pipeline") metrics.init_mesh_pipeline = value;
         else if (key == "total_time") metrics.total_time = value;
     }
     return metrics;
@@ -240,9 +254,10 @@ std::string selectBaselineFile() {
     return selectedPath;
 }
 
+
 // function to compare and print performance differences
 void comparePerformance(const PerformanceMetrics& current, const PerformanceMetrics& baseline) {
-    std::cout << "\n=== Performance Comparison vs Baseline (in microseconds) ===\n";
+    std::cout << "\nPerformance Comparison vs Baseline (in microseconds)\n";
 
     auto calculateDiff = [](long long current, long long baseline) -> float {
         return baseline != 0 ? ((float)current - baseline) / baseline * 100.0f : 0.0f;
@@ -250,7 +265,7 @@ void comparePerformance(const PerformanceMetrics& current, const PerformanceMetr
 
     auto formatDiff = [](long long current, long long baseline, float diff) -> std::string {
         std::stringstream ss;
-        ss << current << "µs vs " << baseline << "µs (";
+        ss << current << "Âµs vs " << baseline << "Âµs (";
         if (diff > 0)
             ss << "+" << diff << "% slower)";
         else
@@ -258,19 +273,68 @@ void comparePerformance(const PerformanceMetrics& current, const PerformanceMetr
         return ss.str();
         };
 
-    std::cout << "init_swapchain: " << formatDiff(current.init_swapchain, baseline.init_swapchain,
-        calculateDiff(current.init_swapchain, baseline.init_swapchain)) << "\n";
-    std::cout << "init_commands: " << formatDiff(current.init_commands, baseline.init_commands,
-        calculateDiff(current.init_commands, baseline.init_commands)) << "\n";
-    std::cout << "init_synch_structures: " << formatDiff(current.init_synch_structures, baseline.init_synch_structures,
-        calculateDiff(current.init_synch_structures, baseline.init_synch_structures)) << "\n";
-    std::cout << "init_descriptors: " << formatDiff(current.init_descriptors, baseline.init_descriptors,
-        calculateDiff(current.init_descriptors, baseline.init_descriptors)) << "\n";
-    std::cout << "init_pipelines: " << formatDiff(current.init_pipelines, baseline.init_pipelines,
-        calculateDiff(current.init_pipelines, baseline.init_pipelines)) << "\n";
-    std::cout << "Total time: " << formatDiff(current.total_time, baseline.total_time,
-        calculateDiff(current.total_time, baseline.total_time)) << "\n";
+    // results for categorization
+    std::vector<std::pair<std::string, float>> results;
+
+    // calculationsss
+    float swapchain_diff = calculateDiff(current.init_swapchain, baseline.init_swapchain);
+    float commands_diff = calculateDiff(current.init_commands, baseline.init_commands);
+    float synch_diff = calculateDiff(current.init_synch_structures, baseline.init_synch_structures);
+    float descriptors_diff = calculateDiff(current.init_descriptors, baseline.init_descriptors);
+    float pipelines_diff = calculateDiff(current.init_pipelines, baseline.init_pipelines);
+    float triangle_diff = calculateDiff(current.init_triangle_pipeline, baseline.init_triangle_pipeline);
+    float mesh_diff = calculateDiff(current.init_mesh_pipeline, baseline.init_mesh_pipeline);
+    float total_diff = calculateDiff(current.total_time, baseline.total_time);
+
+    // output of the thing
+    std::cout << "init_swapchain: " << formatDiff(current.init_swapchain, baseline.init_swapchain, swapchain_diff) << "\n";
+    std::cout << "init_commands: " << formatDiff(current.init_commands, baseline.init_commands, commands_diff) << "\n";
+    std::cout << "init_synch_structures: " << formatDiff(current.init_synch_structures, baseline.init_synch_structures, synch_diff) << "\n";
+    std::cout << "init_descriptors: " << formatDiff(current.init_descriptors, baseline.init_descriptors, descriptors_diff) << "\n";
+    std::cout << "init_pipelines: " << formatDiff(current.init_pipelines, baseline.init_pipelines, pipelines_diff) << "\n";
+    std::cout << "init_triangle_pipeline: " << formatDiff(current.init_triangle_pipeline, baseline.init_triangle_pipeline, triangle_diff) << "\n";
+    std::cout << "init_mesh_pipeline: " << formatDiff(current.init_mesh_pipeline, baseline.init_mesh_pipeline, mesh_diff) << "\n";
+    std::cout << "Total time: " << formatDiff(current.total_time, baseline.total_time, total_diff) << "\n";
+
+    // sotring the results
+    results.push_back({ "init_swapchain", swapchain_diff });
+    results.push_back({ "init_commands", commands_diff });
+    results.push_back({ "init_synch_structures", synch_diff });
+    results.push_back({ "init_descriptors", descriptors_diff });
+    results.push_back({ "init_pipelines", pipelines_diff });
+    results.push_back({ "init_triangle_pipeline", triangle_diff });
+    results.push_back({ "init_mesh_pipeline", mesh_diff });
+    results.push_back({ "total_time", total_diff });
+
+    // pritn
+    std::cout << "\nExecution Location Recommendations\n";
+    std::cout << "Cloud execution recommended for:\n";
+    bool hasCloudOps = false;
+    for (const auto& result : results) {
+        if (result.second > 0) { // If slower than baseline
+            std::cout << "- " << result.first << " (" << std::fixed << std::setprecision(2)
+                << result.second << "% slower)\n";
+            hasCloudOps = true;
+        }
+    }
+    if (!hasCloudOps) {
+        std::cout << "- None (all operations are faster than baseline)\n";
+    }
+
+    std::cout << "\nLocal execution recommended for:\n";
+    bool hasLocalOps = false;
+    for (const auto& result : results) {
+        if (result.second <= 0) { // If faster than or equal to baseline
+            std::cout << "- " << result.first << " (" << std::fixed << std::setprecision(2)
+                << -result.second << "% faster)\n";
+            hasLocalOps = true;
+        }
+    }
+    if (!hasLocalOps) {
+        std::cout << "- None (all operations are slower than baseline)\n";
+    }
 }
+
 
 int main(int argc, char* argv[]) {
     char choice;
